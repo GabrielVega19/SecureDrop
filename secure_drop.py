@@ -10,6 +10,7 @@ import getpass
 import pickle
 import crypt  
 import json
+import threading
 import socket
 from os import urandom
 
@@ -17,14 +18,14 @@ from os import urandom
 #global variable for the name of the file where userdata is stored
 filename = "userdata"
 FORMAT = "utf-8"
-PORT = 8021
+PORT = 8888
 DISCONN_MSG = "!DISCONNECT"
 TEST_MSG = "!TEST"
 REQ_MSG = "!REQUEST"
 ADD_MSG = "!ADD"
 REM_MSG = "!REMOVE"
 HEADER = 128
-
+INCOMING = 0
 #this is the class to hold the information for the user 
 class user:
   def __init__(self, name, email, password):
@@ -201,7 +202,6 @@ def main():
     elif command == "list":
       onlineUsers = getOnlineUsers(server)
       contacts = userData.decryptContacts(password)
-
       print("The following contacts are online: ")
       for key, value in contacts.items():
         for onKey, onValue in onlineUsers.items():
@@ -210,8 +210,7 @@ def main():
               if userData.email == i:
                 print(f"* {key} <{value}>")
                 onlineContacts[onKey] = value
-
-
+      userData.encryptContacts(password, contacts)
     elif command == "exit":
       sendText(server, REM_MSG)
       sendText(server, DISCONN_MSG)
