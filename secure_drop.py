@@ -31,6 +31,7 @@ INCOMING = 0
 filename = "userdata"
 onlineUsers = {}
 onlineContacts = {}
+running = True
 #this is the class to hold the information for the user 
 class user:
   def __init__(self, name, email, password):
@@ -120,10 +121,12 @@ def createUser():
   exit(0)
 
 #server meant to determine who is online
-def connectToServer(IP, PORT):
-  server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  server.connect((IP, PORT))
-  return server
+def connectToServer(tmpIP, tmpPort):
+  tmp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  print("connecting")
+  tmp.connect((tmpIP, tmpPort))
+  print("made it")
+  return tmp
 
 def sendText(server, msg):
     message = msg.encode(FORMAT)
@@ -161,16 +164,14 @@ def getMyIp():
   st.close()
   return sev
 
-def startServer(localIP):
+def listenForFile():
+  localIP = getMyIp()
+  #starts up the recieving server for the client 
   localServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   localServer.bind((localIP, CLIENT_PORT))
   localServer.listen()
-  return localServer
-
-def listenForFile(localServer):
-  while True:
+  while running:
     conn, addr = localServer.accept()
-    lock.acquire()
     for key, value in onlineContacts.items():
       if addr[0] == key:
         accept = input(f"Contact {value} is sending a file. Accept (y/n): ")
@@ -181,9 +182,9 @@ def listenForFile(localServer):
             dataLen = int(conn.recv(HEADER).decode(FORMAT))
             bytes_read = conn.recv(dataLen)
             f.write(writeFileName)
-    lock.release()
     sendText(conn, "File has been successfully transferred.")
     conn.close()
+  localServer.close()
 
 def main():
   #main code that tries to login and if no userdata then it creates one and exits 
@@ -217,12 +218,9 @@ def main():
 
   print("Type \"help\" For Commands.")
 
-  #gets your ip addr
-  localIP = getMyIp()
-  #starts up the recieving server for the client 
-  localServer = startServer(localIP)
+  
   #opens up a new thread to handle the listening
-  thread = threading.Thread(target=listenForFile, args=(localServer,))
+  thread = threading.Thread(target=listenForFile)
   thread.start()
   #main loop for the shell 
   while(True):
@@ -255,7 +253,6 @@ def main():
                 lock.release()
       userData.encryptContacts(password, contacts)
     elif command == "send":
-      lock.acquire()
       contact = input("Which contact do you want to send to: ")
       sendFileName = input("Which file do you want to send: ")
       sendIP = ""
@@ -264,7 +261,7 @@ def main():
           sendIP = key
       if sendIP == "":
         print("This user is not online or they are not in your contacts")
-      else:  
+      else:   
         sendServer = connectToServer(sendIP, CLIENT_PORT)
         sendText(sendFileName)
         dataLen = os.path.getsize(sendFileName)
@@ -275,10 +272,10 @@ def main():
           bytes_read = f.read(dataLen)
           sendServer.sendall(bytes_read)
         sendServer.close()
-      lock.release()
     elif command == "exit":
       sendText(server, REM_MSG)
       sendText(server, DISCONN_MSG)
+      running = False
       break
     else:
       print("Invalid Command.")
