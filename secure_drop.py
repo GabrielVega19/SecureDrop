@@ -11,14 +11,16 @@ import pickle
 import crypt  
 import json
 import threading
+import os
 import socket
 from os import urandom
 
 
 #global variable for the name of the file where userdata is stored
-filename = "userdata"
+lock = threading.Lock()
 FORMAT = "utf-8"
 PORT = 8888
+CLIENT_PORT = 9999
 DISCONN_MSG = "!DISCONNECT"
 TEST_MSG = "!TEST"
 REQ_MSG = "!REQUEST"
@@ -26,6 +28,9 @@ ADD_MSG = "!ADD"
 REM_MSG = "!REMOVE"
 HEADER = 128
 INCOMING = 0
+filename = "userdata"
+onlineUsers = {}
+onlineContacts = {}
 #this is the class to hold the information for the user 
 class user:
   def __init__(self, name, email, password):
@@ -149,6 +154,37 @@ def addContacts(server, userData, password):
     sendText(server, value)
   userData.encryptContacts(password, cont)
 
+def getMyIp():
+  st = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  st.connect(('10.255.255.255', 1))
+  sev = st.getsockname()[0]
+  st.close()
+  return sev
+
+def startServer(localIP):
+  localServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  localServer.bind((localIP, CLIENT_PORT))
+  localServer.listen()
+  return localServer
+
+def listenForFile(localServer):
+  while True:
+    conn, addr = localServer.accept()
+    lock.acquire()
+    for key, value in onlineContacts.items():
+      if addr[0] == key:
+        accept = input(f"Contact {value} is sending a file. Accept (y/n): ")
+        if accept == 'y':
+          fileLen = int(conn.recv(HEADER).decode(FORMAT))
+          writeFileName = conn.recv(fileLen).decode(FORMAT)
+          with open(writeFileName, "wb") as f:
+            dataLen = int(conn.recv(HEADER).decode(FORMAT))
+            bytes_read = conn.recv(dataLen)
+            f.write(writeFileName)
+    lock.release()
+    sendText(conn, "File has been successfully transferred.")
+    conn.close()
+
 def main():
   #main code that tries to login and if no userdata then it creates one and exits 
   try:
@@ -180,10 +216,15 @@ def main():
   addContacts(server, userData, password)
 
   print("Type \"help\" For Commands.")
-  
+
+  #gets your ip addr
+  localIP = getMyIp()
+  #starts up the recieving server for the client 
+  localServer = startServer(localIP)
+  #opens up a new thread to handle the listening
+  thread = threading.Thread(target=listenForFile, args=(localServer,))
+  thread.start()
   #main loop for the shell 
-  onlineUsers = getOnlineUsers(server)
-  onlineContacts = {}
   while(True):
     #gets input from the user
     command = input("secure_drop> ")
@@ -209,14 +250,38 @@ def main():
             for i in onValue[1:len(onValue)]:
               if userData.email == i:
                 print(f"* {key} <{value}>")
+                lock.acquire()
                 onlineContacts[onKey] = value
+                lock.release()
       userData.encryptContacts(password, contacts)
+    elif command == "send":
+      lock.acquire()
+      contact = input("Which contact do you want to send to: ")
+      sendFileName = input("Which file do you want to send: ")
+      sendIP = ""
+      for key, value in onlineContacts.items():
+        if contact == value:
+          sendIP = key
+      if sendIP == "":
+        print("This user is not online or they are not in your contacts")
+      else:  
+        sendServer = connectToServer(sendIP, CLIENT_PORT)
+        sendText(sendFileName)
+        dataLen = os.path.getsize(sendFileName)
+        sendLen = str(dataLen).encode(FORMAT)
+        sendLen += b' ' * (HEADER - len(sendLen))
+        sendServer.send(sendLen)
+        with open(sendFileName, "rb") as f:
+          bytes_read = f.read(dataLen)
+          sendServer.sendall(bytes_read)
+        sendServer.close()
+      lock.release()
     elif command == "exit":
       sendText(server, REM_MSG)
       sendText(server, DISCONN_MSG)
       break
     else:
-      print("Invlid Command.")
+      print("Invalid Command.")
 
   #exit condition for the program 
   exit(0)
