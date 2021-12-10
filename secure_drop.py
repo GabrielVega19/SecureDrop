@@ -123,9 +123,7 @@ def createUser():
 #server meant to determine who is online
 def connectToServer(tmpIP, tmpPort):
   tmp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  print("connecting")
   tmp.connect((tmpIP, tmpPort))
-  print("made it")
   return tmp
 
 def sendText(server, msg):
@@ -165,26 +163,27 @@ def getMyIp():
   return sev
 
 def listenForFile():
-  localIP = getMyIp()
-  #starts up the recieving server for the client 
-  localServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  localServer.bind((localIP, CLIENT_PORT))
-  localServer.listen()
-  while running:
-    conn, addr = localServer.accept()
-    for key, value in onlineContacts.items():
-      if addr[0] == key:
-        accept = input(f"Contact {value} is sending a file. Accept (y/n): ")
-        if accept == 'y':
-          fileLen = int(conn.recv(HEADER).decode(FORMAT))
-          writeFileName = conn.recv(fileLen).decode(FORMAT)
-          with open(writeFileName, "wb") as f:
-            dataLen = int(conn.recv(HEADER).decode(FORMAT))
-            bytes_read = conn.recv(dataLen)
-            f.write(writeFileName)
-    sendText(conn, "File has been successfully transferred.")
-    conn.close()
-  localServer.close()
+    localIP = getMyIp()
+    # starts up the recieving server for the client
+    localServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    localServer.bind((localIP, CLIENT_PORT))
+    localServer.listen()
+    while running:
+      conn, addr = localServer.accept()
+      for key, value in onlineContacts.items():
+        if addr[0] == key:
+          print(f"\nContact {value} is sending a file. Accept (y/n): ")
+          accept = input()
+          if accept == 'y':
+            fileLen = int(conn.recv(HEADER).decode(FORMAT))
+            writeFileName = conn.recv(fileLen).decode(FORMAT)
+            with open(writeFileName, "wb") as f:
+              dataLen = int(conn.recv(HEADER).decode(FORMAT))
+              bytes_read = conn.recv(dataLen)
+              f.write(bytes_read)
+        sendText(conn, "File has been successfully transferred.")
+        conn.close()
+    localServer.close()
 
 def main():
   #main code that tries to login and if no userdata then it creates one and exits 
@@ -263,7 +262,7 @@ def main():
         print("This user is not online or they are not in your contacts")
       else:   
         sendServer = connectToServer(sendIP, CLIENT_PORT)
-        sendText(sendFileName)
+        sendText(sendServer, sendFileName)
         dataLen = os.path.getsize(sendFileName)
         sendLen = str(dataLen).encode(FORMAT)
         sendLen += b' ' * (HEADER - len(sendLen))
@@ -271,6 +270,9 @@ def main():
         with open(sendFileName, "rb") as f:
           bytes_read = f.read(dataLen)
           sendServer.sendall(bytes_read)
+        secLen = int(sendServer.recv(HEADER).decode(FORMAT))
+        sucMsg = sendServer.recv(secLen).decode(FORMAT)
+        print(sucMsg)
         sendServer.close()
     elif command == "exit":
       sendText(server, REM_MSG)
