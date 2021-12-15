@@ -12,26 +12,35 @@ import crypt
 import json
 import threading
 import os
+import time
 import socket
 from os import urandom
 
 
-#global variable for the name of the file where userdata is stored
-lock = threading.Lock()
+
+#global variable that holds the encoding type 
 FORMAT = "utf-8"
+#global variable for the port that the server runs on
 PORT = 8888
+#global variable for the port that runs on the client that recievs files 
 CLIENT_PORT = 9999
+#global variables for the different kinds of requests you can send to the server
 DISCONN_MSG = "!DISCONNECT"
 TEST_MSG = "!TEST"
 REQ_MSG = "!REQUEST"
 ADD_MSG = "!ADD"
 REM_MSG = "!REMOVE"
+#global variable that holds the size for the initial int that then holds the size of the incoming message
 HEADER = 128
 INCOMING = 0
+#global variable for the name of the file where userdata is stored
 filename = "userdata"
+#sets up some global dictionary's that holds the recieved data from the server and includes a threading lock so the threads dont access these at the same time
+lock = threading.Lock()
 onlineUsers = {}
 onlineContacts = {}
-running = True
+#this is a global variable to close the local server that recievs files 
+running = False
 #this is the class to hold the information for the user 
 class user:
   def __init__(self, name, email, password):
@@ -120,12 +129,13 @@ def createUser():
 
   exit(0)
 
-#server meant to determine who is online
+#connects to a server specified by the input parameters
 def connectToServer(tmpIP, tmpPort):
   tmp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   tmp.connect((tmpIP, tmpPort))
   return tmp
 
+#sends a text string to a server you already connected to you pass it in the server and the message you want to send
 def sendText(server, msg):
     message = msg.encode(FORMAT)
     msgLen = len(message)
@@ -134,6 +144,7 @@ def sendText(server, msg):
     server.send(sendLen)
     server.send(message)
 
+#gets the dictionary from the server of the online users and stores it in the global dictionary to be proscessed later 
 def getOnlineUsers(server):
   sendText(server, REQ_MSG)
   msgLength = server.recv(HEADER).decode(FORMAT)
@@ -146,6 +157,7 @@ def getOnlineUsers(server):
     print("Error in recieving online users")
     return {}
   
+#adds your contact to the server so you can be dicovered
 def addContacts(server, userData, password):
   sendText(server, ADD_MSG)
   cont = userData.decryptContacts(password)
@@ -155,6 +167,7 @@ def addContacts(server, userData, password):
     sendText(server, value)
   userData.encryptContacts(password, cont)
 
+#returns your local IP address
 def getMyIp():
   st = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   st.connect(('10.255.255.255', 1))
@@ -162,14 +175,20 @@ def getMyIp():
   st.close()
   return sev
 
-def listenForFile():
+#this is the function that creates the local server on the client that listens for a file being sent a new thread is opened up to run this code 
+def listenForFile(stop):
     localIP = getMyIp()
     # starts up the recieving server for the client
     localServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     localServer.bind((localIP, CLIENT_PORT))
     localServer.listen()
-    while running:
+    #main loop that listens for another client to connect to transmit a file 
+    while True:
       conn, addr = localServer.accept()
+      #listens for the break connection to stop this thread from running
+      if stop():
+        break
+      #this loops through online contacts and only accepts the file if the person sending you a file is in your contacts 
       for key, value in onlineContacts.items():
         if addr[0] == key:
           print(f"\nContact {value} is sending a file. Accept (y/n): ")
@@ -219,7 +238,7 @@ def main():
 
   
   #opens up a new thread to handle the listening
-  thread = threading.Thread(target=listenForFile)
+  thread = threading.Thread(target=listenForFile, args =(lambda : running, ))
   thread.start()
   #main loop for the shell 
   while(True):
@@ -233,11 +252,13 @@ def main():
       print("     \"send\" -> Transfer file to contact")
       print("     \"exit\" -> Exit SecureDrop")
     elif command == "add":
+      #gets input from the user and then adds the contact to the userdata file
       name = input("     Enter Full Name: ")
       email = input("     Enter Email Address: ")
       userData.addContact(name, email, password)
       addContacts(server, userData, password)
     elif command == "list":
+      #requests online users from the server and then does some logic to determine if they are in your contacts and if they are in your contacts and if so then it lists
       onlineUsers = getOnlineUsers(server)
       contacts = userData.decryptContacts(password)
       print("The following contacts are online: ")
@@ -252,15 +273,19 @@ def main():
                 lock.release()
       userData.encryptContacts(password, contacts)
     elif command == "send":
+      #gets input from the user to determine which user and file you want to send
       contact = input("Which contact do you want to send to: ")
       sendFileName = input("Which file do you want to send: ")
+      #gets the ip address of the client you want to send the file to
       sendIP = ""
       for key, value in onlineContacts.items():
         if contact == value:
           sendIP = key
+      #this makes sure the client with the desired user is actually online
       if sendIP == "":
         print("This user is not online or they are not in your contacts")
-      else:   
+      else:
+        #this part actually sends the file over to the client by connecting to it and then sending over the required information 
         sendServer = connectToServer(sendIP, CLIENT_PORT)
         sendText(sendServer, sendFileName)
         dataLen = os.path.getsize(sendFileName)
@@ -275,14 +300,16 @@ def main():
         print(sucMsg)
         sendServer.close()
     elif command == "exit":
+      #this stops the client and sends the messaged required to remove a client from the server 
       sendText(server, REM_MSG)
       sendText(server, DISCONN_MSG)
-      running = False
+      running = True
       break
-    else:
-      print("Invalid Command.")
 
   #exit condition for the program 
+  dissconn = connectToServer(getMyIp(), CLIENT_PORT)
+  dissconn.close()
+  thread.join()
   exit(0)
 
 
