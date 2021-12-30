@@ -1,4 +1,5 @@
-import socket 
+# This bitch about to be lit. 
+import socket
 import threading
 import json
 
@@ -30,6 +31,7 @@ server.bind((SERVER, PORT))
 #global variable that holds the dictionary for the online users that connect to the server and a threading lock to make sure the different threads dont try to write at the same time
 lock = threading.Lock()
 onlineUsers = {}
+
 
 #This is the function that handles each client that connects to the server it opens a new thread to handle each one
 def handleClient(conn, addr):

@@ -1,6 +1,7 @@
-# The secure_drop command is the entry point of the application. If a user
+# The secure_drop command is the entry point of the application. If a user 
 # does not exist, the registration module will activate. The email address
 # is used as the user identifier.
+# This bitch about to be lit. 
 from sys import exit
 from hmac import compare_digest
 from Crypto.Cipher import AES
